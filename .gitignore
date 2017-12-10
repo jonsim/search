@@ -4,6 +4,10 @@ __pycache__/
 *$py.class
 
 # C extensions
+test/symbols/decimals
+*.so
+*.o
+*.a
 *.so
 
 # Distribution / packaging
