@@ -215,6 +215,9 @@ def main():
     #if objects:
     #    print '\n\n'.join([str(o) for o in objects])
 
+def search(paths):
+    return 'search_symbols result'
+
 # Entry point.
 if __name__ == '__main__':
     main()
