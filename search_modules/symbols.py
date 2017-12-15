@@ -215,8 +215,16 @@ def main():
     #if objects:
     #    print '\n\n'.join([str(o) for o in objects])
 
-def search(paths):
-    return 'search_symbols result'
+
+def search(regex, paths, command_args, ignore_case=False, verbose=False):
+    return 'symbols search_result'
+
+def get_subparser(subparsers):
+    parser = subparsers.add_parser('symbols', help='symbol mode', add_help=False)
+    parser.add_argument('-d', action='store_const',
+                        const=True, default=False,
+                        help='Consider dynamic symbols')
+    return parser
 
 # Entry point.
 if __name__ == '__main__':

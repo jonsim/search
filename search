@@ -2,8 +2,6 @@
 # (c) Copyright 2017 Jonathan Simmonds
 """search driver"""
 import argparse
-import inspect
-import pkgutil
 import sys
 import os.path
 from search_modules import *
@@ -11,30 +9,82 @@ from search_modules import *
 __version__ = '1.0'
 
 SEARCH_MODULES = globals()['modules']
+DEFAULT_MODULE = 'files'
 
-class VerboseVersionAction(argparse.Action):
-    def __init__(self, option_strings, dest, nargs=None, **kwargs):
-        # this is how argparse initialises `prog` by default
-        self.prog = os.path.basename(sys.argv[0])
-        super(VerboseVersionAction, self).__init__(option_strings, dest, nargs=0, **kwargs)
-
+class HelpAction(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
-        parser.exit(message='{} {}\n{}'.format(self.prog, __version__, self.version_string()))
+        # Print the main parser's help text.
+        parser.print_help()
+        # Print the help text of each available module.
+        for module in SEARCH_MODULES:
+            if not module.subparser:
+                continue
+            # Get the help text, less the usage information at the front.
+            help_full = module.subparser.format_help()
+            help_usage = module.subparser.format_usage()
+            help_text = help_full[len(help_usage):].strip()
+            # If there is no help text there must be no arguments.
+            if not help_text:
+                help_text = 'no additional arguments'
+            # Indent the output.
+            help_text = '\n'.join(['  ' + s for s in help_text.split('\n')])
+            print '\n%s module:' % (module.name)
+            print help_text
+
+        parser.exit()
+
+class VersionAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser.exit(message=self.version_string())
 
     def version_string(self):
-        return 'Copyright (c) 2017 Jonathan Simmonds\n\n' + \
-               'Loaded modules:\n' + \
-               '\n'.join(['  ' + str(m) for m in SEARCH_MODULES]) + \
-               '\n'
+        return '%s %s\n' \
+               'Copyright (c) 2017 Jonathan Simmonds\n\n' \
+               'Loaded modules:\n' \
+               '%s\n' % (os.path.basename(sys.argv[0]), __version__,
+                         '\n'.join(['  ' + str(m) for m in SEARCH_MODULES]))
+
+def configure_default_subparser(parser):
+    # Find the default module. This isn't strictly necessary, but it simplifies
+    # things later if we can rely on the default being valid. It also will give
+    # a clearer error message.
+    default_module = None
+    for module in SEARCH_MODULES:
+        if module.name == DEFAULT_MODULE:
+            default_module = module
+            break
+    if default_module is None:
+        raise Exception('Failed to locate default module: %s' % (DEFAULT_MODULE))
+    # Extract the optional arguments of the base command (bodge alert).
+    base_optionals = []
+    for action in parser._actions:
+        if not isinstance(action, argparse._SubParsersAction):
+            base_optionals += action.option_strings
+    # Bisect sys.argv at the end of the base optional argument list.
+    i = 1
+    while i < len(sys.argv) and sys.argv[i] in base_optionals:
+        i += 1
+    # Are any of the module names present in the system arguments?
+    if not any([m.name in sys.argv[i:] for m in SEARCH_MODULES]):
+        sys.argv.insert(i, default_module.name)
 
 def main():
     """Main method."""
-    # Handle command line
-    parser = argparse.ArgumentParser(description='Simple recursive file '
+    # Check we have modules.
+    if not SEARCH_MODULES:
+        raise Exception('Failed to locate any search modules.')
+    # Handle command line.
+    parser = argparse.ArgumentParser(add_help=False,
+                                     description='Simple recursive file '
                                      'searcher.')
-    parser.add_argument('--version', action=VerboseVersionAction,
-                        help='show the version number of the program and its '
-                        'installed modules and exit')
+    # Add common arguments.
+    parser.add_argument('-h', '--help',
+                        nargs=0, action=HelpAction,
+                        help='Show this help message and exit.')
+    parser.add_argument('--version',
+                        nargs=0, action=VersionAction,
+                        help='Show the version number of the program and its '
+                        'installed modules and exit.')
     parser.add_argument('-i', dest='ignore-case', action='store_const',
                         const=True, default=False,
                         help='Enable case-insensitive searching.')
@@ -44,6 +94,12 @@ def main():
                         'column, even if it means taking multiple lines per '
                         'match (by default the result will be condensed to '
                         'keep one line per match if possible).')
+    # Add sub commands for all loaded modules.
+    subparsers = parser.add_subparsers(title='search modules',
+                                       help='Select which search module to use:')
+    for module in SEARCH_MODULES:
+        module.get_subparser(subparsers)
+    # Add positional path/regex arguments.
     parser.add_argument('path', type=str, default=[], nargs='*',
                         help='Optional path(s) to perform the search in or on. '
                         'If ommitted the current working directory is used.')
@@ -52,8 +108,8 @@ def main():
                         'is recommended to pass this in single quotes to '
                         'prevent shell expansion/interpretation of the regex '
                         'characters.')
+    configure_default_subparser(parser)
     args = parser.parse_args()
-
     print args
 
 # Entry point.
