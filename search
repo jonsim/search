@@ -85,7 +85,7 @@ def main():
                         nargs=0, action=VersionAction,
                         help='Show the version number of the program and its '
                         'installed modules and exit.')
-    parser.add_argument('-i', dest='ignore-case', action='store_const',
+    parser.add_argument('-i', dest='ignore_case', action='store_const',
                         const=True, default=False,
                         help='Enable case-insensitive searching.')
     parser.add_argument('-v', dest='verbose', action='store_const',
@@ -100,7 +100,7 @@ def main():
     for module in SEARCH_MODULES:
         module.get_subparser(subparsers)
     # Add positional path/regex arguments.
-    parser.add_argument('path', type=str, default=[], nargs='*',
+    parser.add_argument('paths', metavar='path', type=str, default=['.'], nargs='*',
                         help='Optional path(s) to perform the search in or on. '
                         'If ommitted the current working directory is used.')
     parser.add_argument('regex', type=str,
@@ -109,8 +109,10 @@ def main():
                         'prevent shell expansion/interpretation of the regex '
                         'characters.')
     configure_default_subparser(parser)
+    print sys.argv
     args = parser.parse_args()
     print args
+    print args.search(args)
 
 # Entry point.
 if __name__ == '__main__':

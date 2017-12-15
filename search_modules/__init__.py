@@ -28,10 +28,13 @@ class SearchModule(object):
         self.subparser.description = None
         self.subparser.epilog = None
         self.subparser.search_module = self
+        # Set the defaults callback.
+        self.subparser.set_defaults(search=self._search)
         return self.subparser
 
-    def search(self, regex, paths, command_args, ignore_case=False, verbose=False):
-        return self._search_func(regex, paths, command_args, ignore_case, verbose)
+    def _search(self, args):
+        return self._search_func(args.regex, args.paths, args, args.ignore_case,
+                                 args.verbose)
 
     def __str__(self):
         return '%s %s' % (self.name, self.version) if self.version else self.name
