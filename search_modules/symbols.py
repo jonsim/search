@@ -217,7 +217,7 @@ def main():
 
 
 def search(regex, paths, command_args, ignore_case=False, verbose=False):
-    return 'symbols search_result'
+    print 'symbols search_result'
 
 def get_subparser(subparsers):
     parser = subparsers.add_parser('symbols', help='symbol mode', add_help=False)

@@ -1,61 +1,61 @@
 #!/usr/bin/env python
 # (c) Copyright 2017 Jonathan Simmonds
-"""search driver"""
+"""
+Driver for the search utility, loading the various search modules and providing
+a common interface to them.
+"""
 import argparse
+import os
+import re
 import sys
-import os.path
+# Load all modules (this makes use of search_modules' initialisation routine).
 from search_modules import *
 
+# The main search version.
 __version__ = '1.0'
 
-SEARCH_MODULES = globals()['modules']
+# List of SearchModules, as constructed by the search_modules package
+# initialisation routine. This places the list in the global namespace.
+SEARCH_MODULES = globals()['_search_modules']
+# String name of the default search module to use if none is specified on the
+# command line. This must exist in the loaded modules.
 DEFAULT_MODULE = 'files'
 
-class HelpAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        # Print the main parser's help text.
-        parser.print_help()
-        # Print the help text of each available module.
-        for module in SEARCH_MODULES:
-            if not module.subparser:
-                continue
-            # Get the help text, less the usage information at the front.
-            help_full = module.subparser.format_help()
-            help_usage = module.subparser.format_usage()
-            help_text = help_full[len(help_usage):].strip()
-            # If there is no help text there must be no arguments.
-            if not help_text:
-                help_text = 'no additional arguments'
-            # Indent the output.
-            help_text = '\n'.join(['  ' + s for s in help_text.split('\n')])
-            print '\n%s module:' % (module.name)
-            print help_text
-
-        parser.exit()
-
-class VersionAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        parser.exit(message=self.version_string())
-
-    def version_string(self):
-        return '%s %s\n' \
-               'Copyright (c) 2017 Jonathan Simmonds\n\n' \
-               'Loaded modules:\n' \
-               '%s\n' % (os.path.basename(sys.argv[0]), __version__,
-                         '\n'.join(['  ' + str(m) for m in SEARCH_MODULES]))
-
-class SearchHelpFormatter(argparse.HelpFormatter):
-    def _format_usage(self, usage, actions, groups, prefix):
-        return super(SearchHelpFormatter, self)._format_usage(usage, actions,
-                                                              groups, prefix)
-
 class SearchArgument(object):
+    """An encapsulation of an argument to add to an argparse.ArgumentParser.
+
+    This forms a reproducible way of passing the same argument to multiple
+    parsers and storing the state of the argument without resorting to walking
+    internal, non-API attributes on the actual argparse.ArgumentParser.
+
+    Attributes:
+        No public attributes.
+    """
     def __init__(self, *args, **kwargs):
+        """Initialises the SearchArgument.
+
+        Args:
+            All arguments (positional and keyword) will be passed through
+            directly to the argparse.ArgumentParser.add_argument(...) method
+            when added to the parser.
+        """
         self._args = args
         self._kwargs = kwargs
         self._original_help = self._kwargs['help']
 
     def add_to_parser(self, parser, hidden=False):
+        """Adds this argument to a given parser.
+
+        Args:
+            parser: The ArgumentParser to add the argument to (or any object
+                exposing an add_argument method, such as a subparser).
+            hidden: A boolean, False to add the help text for this argument to
+                the parser, True to omit adding it. Defaults to False.
+
+        Returns:
+            argparse.Action object representing the added argument's Action.
+                This can mostly be ignored, but is returned for compatibility.
+        """
         if hidden:
             self._kwargs['help'] = argparse.SUPPRESS
         else:
@@ -63,10 +63,63 @@ class SearchArgument(object):
         return parser.add_argument(*self._args, **self._kwargs)
 
     def get_opts(self):
+        """Retrieves a list of all options and aliases for this argument.
+
+        Returns:
+            List of strings representing the options which can select this
+                argument.
+        """
         return list(self._args)
 
 class SearchParser(argparse.ArgumentParser):
+    """Custom argparse.ArgumentParser for parsing the search command line.
+
+    This is for the most part a thin wrapper around argparse.ArgumentParser, but
+    it provides explicit support for the way in which the driver structures its
+    subparsers.
+    The search driver would like most of the options and parsing magic to be on
+    the base parser, with subparsers being permitted to add their own specific
+    options if necessary. This means it provides a common interface and modules
+    which need to can contribute specific additional functionality.
+    Sadly argparse.ArgumentParser has a different model of subparsers, where
+    each subparser is a completely separate command and has its own help text
+    and completely discrete argument sets. It does not well support having
+    common argument sets. It can produce passable help formatting, but it cannot
+    actually parse such setups.
+    The workaround for this is to encapsulate the desired driver-centric setup
+    in this parser and then actually pass all options separately onto each of
+    the subparsers when they are added. The common options are then never added
+    onto the base parser, except in the case of formatting help text (and even
+    in this case some reformatting is required to make it readable).
+
+    Attributes:
+        global_args:        List of SearchArguments representing the global
+            arguments, i.e. those which apply directly to the driver itself.
+        common_args:        List of SearchArguments representing the common
+            optional arguments, i.e. those which are applicable to all
+            subparsers.
+        positional_args:    List of SearchArguments representing the common
+            positional arguments, i.e. those which are applicable to all
+            subparsers.
+        subparsers:         List of subparser objects contributed to the parser.
+            These are for the most part similar to argparser.ArgumentParsers, in
+            that they can have SearchArguments added to them.
+        global_args_group:  Argument group object representing the argument
+            group to add global_args to. This does not impact the actual parsing
+            but is used when formatting the help text.
+        common_args_group:  Argument group object representing the argument
+            group to add common_args to. This does not impact the actual parsing
+            but is used when formatting the help text.
+        subparsers_handle:  Special handle object (argparse._SubParsersAction)
+            which can be used to add subparsers to this parser.
+    """
     def __init__(self, *args, **kwargs):
+        """Initialises this ArgumentParser.
+
+        Args:
+            All arguments (positional and keyword) will be passed through
+            directly to argparse.ArgumentParser(...) constructor.
+        """
         self._super = super(SearchParser, self)
         self._super.__init__(*args, **kwargs)
         self.global_args = []
@@ -76,40 +129,215 @@ class SearchParser(argparse.ArgumentParser):
         self.global_args_group = self._super.add_argument_group('global arguments')
         self.subparsers_handle = self._super.add_subparsers(
             title='search modules',
-            help='Select which search module to use:',
+            help='Select which search module to use. Defaults to %s.' % (DEFAULT_MODULE),
             parser_class=argparse.ArgumentParser)
         self.common_args_group = self._super.add_argument_group('common arguments')
 
     def add_global_arg(self, *args, **kwargs):
+        """Creates a new global argument and adds it to the internal list.
+
+        This will also add the argument to the base parser.
+
+        Args:
+            All arguments (positional and keywork) will be passed through
+            directly to the SearchArgument constructor.
+        """
         arg = SearchArgument(*args, **kwargs)
         arg.add_to_parser(self.global_args_group)
         self.global_args.append(arg)
 
     def add_common_arg(self, *args, **kwargs):
+        """Creates a new common optional argument and adds it to the list.
+
+        Args:
+            All arguments (positional and keywork) will be passed through
+            directly to the SearchArgument constructor.
+        """
         arg = SearchArgument(*args, **kwargs)
-        #arg.add_to_parser(self.common_args_group)
         self.common_args.append(arg)
 
     def add_positional_arg(self, *args, **kwargs):
+        """Creates a new common position argument and adds it to the list.
+
+        Args:
+            All arguments (positional and keywork) will be passed through
+            directly to the SearchArgument constructor.
+        """
         arg = SearchArgument(*args, **kwargs)
-        #arg.add_to_parser(self._super)
         self.positional_args.append(arg)
 
     def add_module(self, module):
-        subparser = module.get_subparser(self.subparsers_handle)
+        """Adds a SearchModule to this parser.
+
+        This will apply any global/common arguments specified by this parser.
+
+        Args:
+            module: SearchModule object to add.
+        """
+        subparser = module.create_subparser(self.subparsers_handle)
         # Add positional path/regex arguments.
         for arg in self.global_args + self.common_args + self.positional_args:
             arg.add_to_parser(subparser, hidden=True)
         self.subparsers.append(subparser)
 
     def format_help(self):
+        """Overrides the argparse.ArgumentParser.format_help() method.
+
+        This will rebuild the options on the parser to expose appropriate common
+        arguments etc, even though argparse does not have support for parsing
+        such common arguments. It is assumed once this method is called any
+        parsing has been done and thus it is okay to modify the parser.
+        """
+        def _split_bracketed_expression(expression):
+            """Splits an expresion on whitespace, keeping bracketed portions
+            together.
+
+            Args:
+                expression: String single-line expression to split.
+
+            Returns:
+                List of strings, representing the split expression.
+            """
+            parts = []
+            current_part = -1
+            last_part = 0
+            unmatched = ''
+            for i, char in enumerate(expression):
+                if char in '[({':
+                    if current_part == -1:
+                        current_part = i
+                        if last_part != current_part:
+                            part = expression[last_part:current_part].strip()
+                            if part:
+                                parts.append(part)
+                            last_part = i+1
+                    unmatched += char
+                elif char in '])}':
+                    if not unmatched:
+                        raise Exception('Unmatched closing brace found')
+                    if char == ']' and unmatched[-1] != '[' or \
+                       char == ')' and unmatched[-1] != '(' or \
+                       char == '}' and unmatched[-1] != '{':
+                        raise Exception('Mismatched closing brace found')
+                    unmatched = unmatched[:-1]
+                    if not unmatched:
+                        part = expression[current_part:i+1].strip()
+                        if part:
+                            parts.append(part)
+                        last_part = i+1
+                        current_part = -1
+            # Add any trailing part.
+            if last_part != len(expression):
+                part = expression[last_part:].strip()
+                if part:
+                    parts.append(part)
+            return parts
+
+        def _reflow_usage(usage):
+            """Wraps a formatted, single line usage text over multiple lines,
+            splitting it appropriately (if necessary).
+
+            Args:
+                usage: String single-line of usage text.
+
+            Returns:
+                String of appropriately wrapped usage text.
+            """
+            # Retrieve the maximum width to print to.
+            try:
+                max_width = int(os.environ['COLUMNS']) - 2
+            except (KeyError, ValueError):
+                max_width = 80 - 2
+            # Split usage string into parts.
+            parts = _split_bracketed_expression(usage)
+            # Recombine the parts into strings of at most max_width.
+            prefix = 'usage:'
+            lines = [prefix]
+            for part in parts:
+                if len(part) + len(lines[-1]) < max_width:
+                    lines[-1] += ' ' + part
+                else:
+                    lines.append(' ' * (len(prefix) + 5) + part)
+            return '\n'.join(lines)
+
+        def _format_usage(base_pre, base_post, modules):
+            """Builds a usage string for the search driver and its subparsers
+            from the default usage strings for the parsers.
+
+            Args:
+                base_pre:   String of formatted usage text for the 'standard'
+                    base parser before any help-formatting-only arguments are
+                    added.
+                base_post:  String of formatted usage text for the modified
+                    base parser with the help-formatting-only common optional
+                    and positional arguments added to it.
+                modules:    List of strings of usage text for each of the
+                    search modules.
+            """
+            # Extract the program, global options and subparser options from the
+            # standard base parser.
+            match = re.match(r'^(\S+)(\s+.+)?\s+({([^}]*)} ...)$',
+                             base_pre.replace('\n', ' '))
+            if not match:
+                raise Exception('Failed to parse initial usage information')
+            usage_base_prog = match.group(1)
+            usage_base_glob = match.group(2).strip()
+            usage_base_subp = match.group(3)
+
+            # Extract the common optional and positional arguments from the
+            # modified base parser.
+            match = re.match(r'^%s\s+%s\s+(\S.+\s+)?%s(\s+.+)?$' % (
+                re.escape(usage_base_prog), re.escape(usage_base_glob),
+                re.escape(usage_base_subp)), base_post.replace('\n', ' '))
+            if not match:
+                raise Exception('Failed to parse rebuilt usage information')
+            usage_base_comn = match.group(1).strip()
+            usage_base_posi = match.group(2).strip()
+
+            # Form a combined modules option from the individual modules.
+            usage_modules_combined = '[%s]' % (' | '.join(modules))
+
+            # Take the extracted parts and recombine them into the final usage.
+            parts = [p for p in [usage_base_prog, usage_base_glob,
+                                 usage_modules_combined, usage_base_comn,
+                                 usage_base_posi] if p]
+            # Reflow the result to ensure it is properly wrapped.
+            return _reflow_usage(' '.join(parts))
+
+        usage_prefix_len = len('usage: ')
+        # Generate the base parser's usage text before rebuilding the parser.
+        usage_base_pre = self._super.format_usage().strip()[usage_prefix_len:]
+        # Read the usage text for each of the module parsers.
+        usage_modules = [m.subparser.format_usage().strip()[usage_prefix_len:]
+                         for m in SEARCH_MODULES]
+        # Rebuild the base parser to add common options.
         for arg in self.common_args:
             arg.add_to_parser(self.common_args_group)
         for arg in self.positional_args:
             arg.add_to_parser(self._super)
-        return self._super.format_help()
+        # Regenerate the base parser's usage text.
+        usage_base_post = self._super.format_usage().strip()[usage_prefix_len:]
+        # Use all these pieces to format the proper usage text.
+        formatted_usage = _format_usage(usage_base_pre, usage_base_post, usage_modules)
+        # As we have formatted our own usage, suppress usage generation from the
+        # help formatter and add the formatted help to the returned text.
+        self.usage = argparse.SUPPRESS
+        return '%s\n\n%s' % (formatted_usage, self._super.format_help())
 
 def get_commandline(parser):
+    """Retrieves the program's command line, re-ordered appropriately.
+
+    argparse can be fussy about which order the options come in when dealing
+    with subparsers (particularly when it comes to attributing options to either
+    the base parser or the subparsers). Help it out be re-ordering the command
+    line to ensure the options come in the right order.
+
+    Args:
+        parser: SearchParser to re-order the arguments for.
+
+    Returns:
+        List of strings representing the (correctly ordered) command line.
+    """
     args = sys.argv[1:]
     # Is the command line empty? If so, bail and let argparse handle it.
     if not args:
@@ -141,55 +369,104 @@ def get_commandline(parser):
     return [args[module_i]] + args[:module_i] + args[module_i+1:]
 
 def validate_search_modules():
+    """Raise an Exception if the search modules are misconfigured."""
     # Check we have modules.
     if not SEARCH_MODULES:
         raise Exception('Failed to locate any search modules.')
 
 def validate_default_module():
-    # Find the default module. This isn't strictly necessary, but it simplifies
-    # things later if we can rely on the default being valid. It also will give
-    # a clearer error message.
+    """Raise an Exception if the default module is misconfigured."""
+    # Check the default module exists. This isn't strictly necessary, but it
+    # gives a clearer error message than failing later on.
     if DEFAULT_MODULE not in [m.name for m in SEARCH_MODULES]:
         raise Exception('Failed to locate default module: %s' % (DEFAULT_MODULE))
 
-
 def main():
     """Main method."""
+    class HelpAction(argparse.Action):
+        """Custom argparse.Action for printing the help text.
+
+        The default argparse help action will only print the help from the
+        base parser (or the parser which is handling the help command). For the
+        search driver it makes more sense that _all_ parsers return the same
+        help text: the base parser and recursively all its subparsers.
+        """
+        def __call__(self, parser, namespace, values, option_string=None):
+            # Print the base parser's help text.
+            base_parser.print_help()
+            # Print the help text of each available module.
+            for module in SEARCH_MODULES:
+                # Get the help text, less the usage information at the front.
+                help_full = module.subparser.format_help()
+                help_usage = module.subparser.format_usage()
+                help_text = help_full[len(help_usage):].strip()
+                # If there is no help text there must be no arguments.
+                if not help_text:
+                    help_text = 'no additional arguments'
+                # Indent the output.
+                help_text = '\n'.join(['  ' + s for s in help_text.split('\n')])
+                print '\n%s module:' % (module.name)
+                print help_text
+            parser.exit()
+
+    class VersionAction(argparse.Action):
+        """Custom argparse.Action for printing the version text.
+
+        The default argparse version action will only print a single line of
+        version text. For the search driver it makes sense to print the version
+        information of all loaded modules as well as that of the main driver.
+        """
+        def __call__(self, parser, namespace, values, option_string=None):
+            parser.exit(message=self.version_string())
+
+        def version_string(self):
+            """Generates the version string for the driver.
+
+            Returns:
+                String multi-line version output.
+            """
+            return '%s %s\n' \
+                'Copyright (c) 2017 Jonathan Simmonds\n\n' \
+                'Loaded modules:\n' \
+                '%s\n' % (os.path.basename(sys.argv[0]), __version__,
+                          '\n'.join(['  ' + str(m) for m in SEARCH_MODULES]))
+
+    # Start by asserting the modules were loaded correctly.
     validate_search_modules()
     validate_default_module()
-    # Handle command line.
-    parser = SearchParser(
+
+    # Build the base parser.
+    base_parser = SearchParser(
         add_help=False,
-        formatter_class=SearchHelpFormatter,
         description='Simple recursive file searcher.')
     # Add global arguments.
-    parser.add_global_arg(
+    base_parser.add_global_arg(
         '-h', '--help',
         nargs=0, action=HelpAction,
         help='Show this help message and exit.')
-    parser.add_global_arg(
+    base_parser.add_global_arg(
         '--version',
         nargs=0, action=VersionAction,
         help='Show the version number of the program and its installed modules '
              'and exit.')
     # Add common arguments.
-    parser.add_common_arg(
+    base_parser.add_common_arg(
         '-i',
         dest='ignore_case', action='store_const', const=True, default=False,
         help='Enable case-insensitive searching.')
-    parser.add_common_arg(
+    base_parser.add_common_arg(
         '-v',
         dest='verbose', action='store_const', const=True, default=False,
         help='Enable verbose, full replication of the result column, even if '
              'it means taking multiple lines per match (by default the result '
              'will be condensed to keep one line per match if possible).')
     # Add common positional arguments.
-    parser.add_positional_arg(
+    base_parser.add_positional_arg(
         'paths',
         metavar='path', type=str, default=['.'], nargs='*',
         help='Optional path(s) to perform the search in or on. If ommitted the '
              'current working directory is used.')
-    parser.add_positional_arg(
+    base_parser.add_positional_arg(
         'regex',
         type=str,
         help='Perl-style regular expression to search for. It is recommended '
@@ -197,12 +474,17 @@ def main():
              'interpretation of the regex characters.')
     # Add sub commands for all loaded modules.
     for module in SEARCH_MODULES:
-        parser.add_module(module)
-    args = get_commandline(parser)
+        base_parser.add_module(module)
+
+    # Retrieve (and potentially reorder) the command line.
+    args = get_commandline(base_parser)
     print '%s -> %s' % (str(sys.argv[1:]), str(args))
-    args = parser.parse_args(args)
-    print args
-    print args.search(args)
+
+    # Actually parse the arguments.
+    args = base_parser.parse_args(args)
+
+    # Invoke the parsed module search callback.
+    args.search(args)
 
 # Entry point.
 if __name__ == '__main__':
