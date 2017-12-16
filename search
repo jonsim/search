@@ -44,77 +44,166 @@ class VersionAction(argparse.Action):
                '%s\n' % (os.path.basename(sys.argv[0]), __version__,
                          '\n'.join(['  ' + str(m) for m in SEARCH_MODULES]))
 
-def configure_default_subparser(parser):
-    # Find the default module. This isn't strictly necessary, but it simplifies
-    # things later if we can rely on the default being valid. It also will give
-    # a clearer error message.
-    default_module = None
-    for module in SEARCH_MODULES:
-        if module.name == DEFAULT_MODULE:
-            default_module = module
-            break
-    if default_module is None:
-        raise Exception('Failed to locate default module: %s' % (DEFAULT_MODULE))
-    # Extract the optional arguments of the base command (bodge alert).
-    base_optionals = []
-    for action in parser._actions:
-        if not isinstance(action, argparse._SubParsersAction):
-            base_optionals += action.option_strings
-    # Bisect sys.argv at the end of the base optional argument list.
-    i = 1
-    while i < len(sys.argv) and sys.argv[i] in base_optionals:
-        i += 1
-    # Are any of the module names present in the system arguments?
-    if not any([m.name in sys.argv[i:] for m in SEARCH_MODULES]):
-        sys.argv.insert(i, default_module.name)
+class SearchHelpFormatter(argparse.HelpFormatter):
+    def _format_usage(self, usage, actions, groups, prefix):
+        return super(SearchHelpFormatter, self)._format_usage(usage, actions,
+                                                              groups, prefix)
 
-def main():
-    """Main method."""
+class SearchArgument(object):
+    def __init__(self, *args, **kwargs):
+        self._args = args
+        self._kwargs = kwargs
+        self._original_help = self._kwargs['help']
+
+    def add_to_parser(self, parser, hidden=False):
+        if hidden:
+            self._kwargs['help'] = argparse.SUPPRESS
+        else:
+            self._kwargs['help'] = self._original_help
+        return parser.add_argument(*self._args, **self._kwargs)
+
+    def get_opts(self):
+        return list(self._args)
+
+class SearchParser(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs):
+        self._super = super(SearchParser, self)
+        self._super.__init__(*args, **kwargs)
+        self.global_args = []
+        self.common_args = []
+        self.positional_args = []
+        self.subparsers = []
+        self.global_args_group = self._super.add_argument_group('global arguments')
+        self.subparsers_handle = self._super.add_subparsers(
+            title='search modules',
+            help='Select which search module to use:',
+            parser_class=argparse.ArgumentParser)
+        self.common_args_group = self._super.add_argument_group('common arguments')
+
+    def add_global_arg(self, *args, **kwargs):
+        arg = SearchArgument(*args, **kwargs)
+        arg.add_to_parser(self.global_args_group)
+        self.global_args.append(arg)
+
+    def add_common_arg(self, *args, **kwargs):
+        arg = SearchArgument(*args, **kwargs)
+        #arg.add_to_parser(self.common_args_group)
+        self.common_args.append(arg)
+
+    def add_positional_arg(self, *args, **kwargs):
+        arg = SearchArgument(*args, **kwargs)
+        #arg.add_to_parser(self._super)
+        self.positional_args.append(arg)
+
+    def add_module(self, module):
+        subparser = module.get_subparser(self.subparsers_handle)
+        # Add positional path/regex arguments.
+        for arg in self.global_args + self.common_args + self.positional_args:
+            arg.add_to_parser(subparser, hidden=True)
+        self.subparsers.append(subparser)
+
+    def format_help(self):
+        for arg in self.common_args:
+            arg.add_to_parser(self.common_args_group)
+        for arg in self.positional_args:
+            arg.add_to_parser(self._super)
+        return self._super.format_help()
+
+def get_commandline(parser):
+    args = sys.argv[1:]
+    # Is the command line empty? If so, bail and let argparse handle it.
+    if not args:
+        return []
+    # Are any of the global options in the command line? If so drop everything
+    # else.
+    for global_arg in parser.global_args:
+        for opt in global_arg.get_opts():
+            if opt in args:
+                return [opt]
+    # Is the command line too short to contain a module name? If so add the
+    # default module to the beginning.
+    if len(args) == 1:
+        return [DEFAULT_MODULE] + args
+    # Find the position of the module name in the command line.
+    module_names = [m.name for m in SEARCH_MODULES]
+    module_i = -1
+    for i, arg in enumerate(args):
+        if arg in module_names:
+            module_i = i
+            break
+    # If no module name was found add the default module to the beginning.
+    if module_i == -1:
+        return [DEFAULT_MODULE] + args
+    # If the module name was in the right place, just return it.
+    if module_i == 0:
+        return args
+    # Otherwise, promote the found module name to the front of the list.
+    return [args[module_i]] + args[:module_i] + args[module_i+1:]
+
+def validate_search_modules():
     # Check we have modules.
     if not SEARCH_MODULES:
         raise Exception('Failed to locate any search modules.')
+
+def validate_default_module():
+    # Find the default module. This isn't strictly necessary, but it simplifies
+    # things later if we can rely on the default being valid. It also will give
+    # a clearer error message.
+    if DEFAULT_MODULE not in [m.name for m in SEARCH_MODULES]:
+        raise Exception('Failed to locate default module: %s' % (DEFAULT_MODULE))
+
+
+def main():
+    """Main method."""
+    validate_search_modules()
+    validate_default_module()
     # Handle command line.
-    parser = argparse.ArgumentParser(add_help=False,
-                                     description='Simple recursive file '
-                                     'searcher.')
+    parser = SearchParser(
+        add_help=False,
+        formatter_class=SearchHelpFormatter,
+        description='Simple recursive file searcher.')
+    # Add global arguments.
+    parser.add_global_arg(
+        '-h', '--help',
+        nargs=0, action=HelpAction,
+        help='Show this help message and exit.')
+    parser.add_global_arg(
+        '--version',
+        nargs=0, action=VersionAction,
+        help='Show the version number of the program and its installed modules '
+             'and exit.')
     # Add common arguments.
-    parser.add_argument('-h', '--help',
-                        nargs=0, action=HelpAction,
-                        help='Show this help message and exit.')
-    parser.add_argument('--version',
-                        nargs=0, action=VersionAction,
-                        help='Show the version number of the program and its '
-                        'installed modules and exit.')
-    parser.add_argument('-i', dest='ignore_case', action='store_const',
-                        const=True, default=False,
-                        help='Enable case-insensitive searching.')
-    parser.add_argument('-v', dest='verbose', action='store_const',
-                        const=True, default=False,
-                        help='Enable verbose, full replication of the result '
-                        'column, even if it means taking multiple lines per '
-                        'match (by default the result will be condensed to '
-                        'keep one line per match if possible).')
+    parser.add_common_arg(
+        '-i',
+        dest='ignore_case', action='store_const', const=True, default=False,
+        help='Enable case-insensitive searching.')
+    parser.add_common_arg(
+        '-v',
+        dest='verbose', action='store_const', const=True, default=False,
+        help='Enable verbose, full replication of the result column, even if '
+             'it means taking multiple lines per match (by default the result '
+             'will be condensed to keep one line per match if possible).')
+    # Add common positional arguments.
+    parser.add_positional_arg(
+        'paths',
+        metavar='path', type=str, default=['.'], nargs='*',
+        help='Optional path(s) to perform the search in or on. If ommitted the '
+             'current working directory is used.')
+    parser.add_positional_arg(
+        'regex',
+        type=str,
+        help='Perl-style regular expression to search for. It is recommended '
+             'to pass this in single quotes to prevent shell expansion or '
+             'interpretation of the regex characters.')
     # Add sub commands for all loaded modules.
-    subparsers = parser.add_subparsers(title='search modules',
-                                       help='Select which search module to use:')
     for module in SEARCH_MODULES:
-        module.get_subparser(subparsers)
-    # Add positional path/regex arguments.
-    parser.add_argument('paths', metavar='path', type=str, default=['.'], nargs='*',
-                        help='Optional path(s) to perform the search in or on. '
-                        'If ommitted the current working directory is used.')
-    parser.add_argument('regex', type=str,
-                        help='Perl-style regular expression to search for. It '
-                        'is recommended to pass this in single quotes to '
-                        'prevent shell expansion/interpretation of the regex '
-                        'characters.')
-    configure_default_subparser(parser)
-    print sys.argv
-    args = parser.parse_args()
+        parser.add_module(module)
+    args = get_commandline(parser)
+    print '%s -> %s' % (str(sys.argv[1:]), str(args))
+    args = parser.parse_args(args)
     print args
     print args.search(args)
 
 # Entry point.
 if __name__ == '__main__':
     main()
-

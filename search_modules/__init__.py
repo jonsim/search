@@ -28,7 +28,7 @@ class SearchModule(object):
         self.subparser.description = None
         self.subparser.epilog = None
         self.subparser.search_module = self
-        # Set the defaults callback.
+        # Set the search callback.
         self.subparser.set_defaults(search=self._search)
         return self.subparser
 
