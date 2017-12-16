@@ -478,7 +478,6 @@ def main():
 
     # Retrieve (and potentially reorder) the command line.
     args = get_commandline(base_parser)
-    print '%s -> %s' % (str(sys.argv[1:]), str(args))
 
     # Actually parse the arguments.
     args = base_parser.parse_args(args)
