@@ -88,7 +88,7 @@ for loader, module_name, is_pkg in pkgutil.walk_packages(__path__):
             search_module.version = value
         elif member_name == 'search':
             search_module._search_func = value
-        elif member_name == 'get_subparser':
+        elif member_name == 'create_subparser':
             search_module._subparser_func = value
     search_module.validate()
     _search_modules.append(search_module)

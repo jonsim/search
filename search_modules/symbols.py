@@ -217,9 +217,29 @@ def main():
 
 
 def search(regex, paths, command_args, ignore_case=False, verbose=False):
+    """Perform the requested search.
+
+    Args:
+        regex:          String regular expression to search with.
+        paths:          List of strings representing the paths to search in/on.
+        command_args:   Namespace containing all parsed arguments. If the
+            subparser added additional arguments these will be present.
+        ignore_case:    Boolean, True if the search should be case-insensitive,
+            False if it should be case-sensitive.
+        verbose:        Boolean, True for verbose output, False otherwise.
+    """
     print 'symbols search_result'
 
-def get_subparser(subparsers):
+def create_subparser(subparsers):
+    """Creates this module's subparser.
+
+    Args:
+        subparsers: Special handle object (argparse._SubParsersAction) which can
+            be used to add subparsers to a parser.
+
+    Returns:
+        Object representing the created subparser.
+    """
     parser = subparsers.add_parser('symbols', help='symbol mode', add_help=False)
     parser.add_argument('-d', action='store_const',
                         const=True, default=False,
