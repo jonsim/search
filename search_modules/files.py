@@ -3,26 +3,60 @@
 
 This will ignore .git and .svn directories.
 """
-import subprocess
+import sys
+from search_utils.process import StreamingProcess
+from search_utils.result import SearchResult, TextFileMatch, TextFileLocation
 
 # Module version
 __version__ = '1.0'
 
+def search_result_from_grep(line, regex=None, ignore_case=False):
+    """Creates a SearchResult object from the output from a grep command.
+
+    NB: This relies on grep being called with at least args 'HIZns'
+
+    Args:
+        line:   String single line of grep output to process.
+        regex:  String regex this result is derived from, or None if unknown.
+            Defaults to None.
+
+    Returns:
+        The initialised SearchResult.
+    """
+    path_split = line.split('\0', 1)
+    if len(path_split) != 2:
+        raise Exception('Line does not look like grep -HIZns output: ' + line)
+    line_split = path_split[1].split(':', 1)
+    if len(line_split) != 2:
+        raise Exception('Line does not look like grep -HIZns output: ' + line)
+    return SearchResult(TextFileMatch(line_split[1].strip(), regex, ignore_case),
+                        TextFileLocation(path_split[0], int(line_split[0])))
+
 def grep(regex, paths, ignore_case):
-    # r (recursive), n (print line num), s (no error messages), H (print filename),
-    # Z (NUL terminate filenames), I (ignore binary files), P (Perl regex)
-    grep_args = '-rnsHZIP'
+    if sys.platform == 'linux':
+        # Assume Linux has GNU grep. This has the options:
+        # -r (recursive), -n (print line num), -s (no error messages),
+        # -H (print filename), -Z (NUL terminate filenames),
+        # -I (ignore binary files), -P (Perl regex)
+        grep_args = ['-rnsHZIP']
+    else:
+        # Otherwise assume BSD grep. This has the options:
+        # -r (recursive), -n (print line num), -s (no error messages),
+        # -H (print filename), --null (NUL terminate filenames),
+        # -I (ignore binary files), -E (extended regex)
+        grep_args = ['-rnsHIE', '--null']
     if ignore_case:
-        grep_args += 'i'
-    try:
-        return subprocess.check_output(['grep', '--color=never', grep_args,
-                                        '--exclude-dir=".svn"',
-                                        '--exclude-dir=".git"', regex] + paths).strip()
-    except subprocess.CalledProcessError as cpe:
-        if cpe.returncode == 1:
-            return ''
-        else:
-            raise
+        # GNU + BSD grep both have: i (ignore case)
+        grep_args[0] += 'i'
+
+    with StreamingProcess(['grep', '--color=never'] + grep_args +
+                          ['--exclude-dir=".svn"', '--exclude-dir=".git"',
+                           regex] + paths) as proc:
+        for line in proc:
+            if not line:
+                continue
+            result = search_result_from_grep(line, regex, ignore_case)
+            print result.format(True, match_col_width=0, loc_col_width=0)
 
 def search(regex, paths, command_args, ignore_case=False, verbose=False):
     """Perform the requested search.
@@ -36,10 +70,7 @@ def search(regex, paths, command_args, ignore_case=False, verbose=False):
             False if it should be case-sensitive.
         verbose:        Boolean, True for verbose output, False otherwise.
     """
-    results = grep(regex, paths, ignore_case)
-    # TODO prettify output
-    if results:
-        print results
+    grep(regex, paths, ignore_case)
 
 def create_subparser(subparsers):
     """Creates this module's subparser.
