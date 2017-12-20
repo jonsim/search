@@ -6,6 +6,7 @@ This will ignore .git and .svn directories.
 import sys
 from search_utils.process import StreamingProcess
 from search_utils.result import SearchResult, TextFileMatch, TextFileLocation
+from search_utils.printer import BufferingTwoColumnPrinter
 
 # Module version
 __version__ = '1.0'
@@ -32,7 +33,7 @@ def search_result_from_grep(line, regex=None, ignore_case=False):
     return SearchResult(TextFileMatch(line_split[1].strip(), regex, ignore_case),
                         TextFileLocation(path_split[0], int(line_split[0])))
 
-def grep(regex, paths, ignore_case):
+def grep(regex, paths, ignore_case, verbose):
     if sys.platform == 'linux':
         # Assume Linux has GNU grep. This has the options:
         # -r (recursive), -n (print line num), -s (no error messages),
@@ -50,13 +51,14 @@ def grep(regex, paths, ignore_case):
         grep_args[0] += 'i'
 
     with StreamingProcess(['grep', '--color=never'] + grep_args +
-                          ['--exclude-dir=".svn"', '--exclude-dir=".git"',
+                          ['--exclude-dir=.svn', '--exclude-dir=.git',
                            regex] + paths) as proc:
-        for line in proc:
-            if not line:
-                continue
-            result = search_result_from_grep(line, regex, ignore_case)
-            print result.format(True, match_col_width=0, loc_col_width=0)
+        # printer = SingleLinePrinter(condense_location=not verbose,
+        #                             condense_match=not verbose)
+        printer = BufferingTwoColumnPrinter(condense_location=not verbose,
+                                            condense_match=not verbose)
+        printer.print_results(search_result_from_grep(line, regex, ignore_case)
+                              for line in proc)
 
 def search(regex, paths, command_args, ignore_case=False, verbose=False):
     """Perform the requested search.
@@ -70,7 +72,7 @@ def search(regex, paths, command_args, ignore_case=False, verbose=False):
             False if it should be case-sensitive.
         verbose:        Boolean, True for verbose output, False otherwise.
     """
-    grep(regex, paths, ignore_case)
+    grep(regex, paths, ignore_case, verbose)
 
 def create_subparser(subparsers):
     """Creates this module's subparser.

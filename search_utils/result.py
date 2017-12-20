@@ -39,7 +39,8 @@ class SearchResult(object):
             return '%s @ %s' % (str(self.match), str(self.location))
         return self.match
 
-    def format(self, decorate=True, match_col_width=0, loc_col_width=0):
+    def format(self, decorate=True, match_col_width=0, loc_col_width=0,
+               separator=' '):
         match_str = self.match.format(decorate=decorate,
                                       min_width=0,
                                       max_width=match_col_width)
@@ -47,7 +48,7 @@ class SearchResult(object):
             loc_str = self.location.format(decorate=True,
                                            min_width=loc_col_width,
                                            max_width=loc_col_width)
-            return loc_str + ' ' + match_str
+            return loc_str + separator + match_str
         else:
             return match_str
 
@@ -136,12 +137,6 @@ class Location(object):
         raise NotImplementedError('Location must be subclassed')
 
 class TextFileLocation(Location):
-    # The character sequence to place at the truncation point in directory paths
-    _DIR_CONT = '...'
-    # The character sequence to place at the truncation point in file names
-    _FILE_CONT = '...'
-    # The maximum width for the line number column
-    _LINENO_COL_WIDTH = 5
 
     def __init__(self, path, line=-1):
         self.path = path
@@ -155,55 +150,67 @@ class TextFileLocation(Location):
         return '%s:%d' % (self.path, self.line)
 
     def format(self, decorate=True, min_width=0, max_width=0):
-        def _format_dirname(min_width=0, max_width=0):
+        def _format_path(max_width=0):
+            formatted = _ltrunc(self.path, max_width)
+            if decorate:
+                # If there is some of the dirname visible, split the string and
+                # format it.
+                basename_len = len(self.basename)
+                if len(formatted) > basename_len:
+                    dirname_part = ansi.decorate(formatted[:-basename_len], ansi.FG_YELLOW)
+                    basename_part = ansi.decorate(formatted[-basename_len:], ansi.FG_YELLOW, ansi.BOLD)
+                    formatted = dirname_part + basename_part
+                else:
+                    formatted = ansi.decorate(formatted, ansi.FG_YELLOW, ansi.BOLD)
+            return formatted
+
+        def _format_dirname(max_width=0):
             """Internal method to extract and format/truncate/pad the dirname."""
-            formatted = self.dirname
-            # Pad or truncate as necessary.
-            formatted = _lpad(formatted, min_width)
-            formatted = _ltrunc(formatted, max_width)
+            # Truncate as necessary.
+            formatted = _ltrunc(self.dirname, max_width)
             # Decorating if necessary.
             if decorate:
                 formatted = ansi.decorate(formatted, ansi.FG_YELLOW)
             return formatted
 
-        def _format_basename(min_width=0, max_width=0):
+        def _format_basename(max_width=0):
             """Internal method to extract and format/truncate/pad the basename."""
-            formatted = self.basename
-            # Pad or truncate as necessary.
-            formatted = _rpad(formatted, min_width)
-            formatted = _rtrunc(formatted, max_width)
+            # Truncate as necessary.
+            formatted = _ltrunc(self.basename, max_width)
             # Decorate if necessary.
             if decorate:
                 formatted = ansi.decorate(formatted, ansi.BOLD, ansi.FG_YELLOW)
             return formatted
 
-        def _format_line(min_width=0):
+        def _format_line():
             """Internal method to extract and format/truncate/pad the lineno."""
             if self.line < 0:
                 return ''
             formatted = ':' + str(self.line)
-            # Pad if necessary.
-            formatted = _rpad(formatted, min_width)
             # Decorate if necessary.
             if decorate:
                 formatted = ansi.decorate(formatted, ansi.FG_YELLOW)
             return formatted
 
         if max_width > 0:
-            formatted = _format_line(min_width=self._LINENO_COL_WIDTH)
-            # While we can afford to add more to the string, keep adding
+            formatted = _format_line()
+            # While we can afford to add more to the string, keep adding.
             curlen = ansi.length(formatted)
             if curlen < max_width:
-                formatted = _format_basename(max_width=max_width-curlen) + formatted
-            curlen = ansi.length(formatted)
-            if curlen < max_width:
-                formatted = _format_dirname(max_width=max_width-curlen) + formatted
+                formatted = _format_path(max_width=max_width-curlen) + formatted
+            #     formatted = _format_basename(max_width=max_width-curlen) + formatted
+            # curlen = ansi.length(formatted)
+            # if curlen < max_width:
+            #     formatted = _format_dirname(max_width=max_width-curlen) + formatted
         else:
             formatted = _format_dirname() + _format_basename() + _format_line()
-        # If too short, right pad
-        curlen = ansi.length(formatted)
-        if min_width and curlen < min_width:
-            formatted = formatted + ' ' * (min_width - curlen)
+
+        if min_width > 0:
+            # If too short, right pad.
+            curlen = ansi.length(formatted)
+            if curlen < min_width:
+                formatted = formatted + ' ' * (min_width - curlen)
+
         return formatted
 
     def length(self):
