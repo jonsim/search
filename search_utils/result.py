@@ -1,23 +1,63 @@
+# (c) Copyright 2017 Jonathan Simmonds
+"""Module providing types necessary to build SearchResult objects."""
 import os.path
 import re
 from search_utils import ansi
 
 def _lpad(string, width):
+    """Inserts padding to the left of a string to be at least 'width' wide.
+
+    Args:
+        string: String to pad.
+        width:  Width to make the string at least. May be 0 to not pad.
+
+    Returns:
+        Padded string.
+    """
     if width > 0 and len(string) < width:
         return ' ' * (width - len(string)) + string
     return string
 
 def _rpad(string, width):
+    """Inserts padding to the right of a string to be at least 'width' wide.
+
+    Args:
+        string: String to pad.
+        width:  Width to make the string at least. May be 0 to not pad.
+
+    Returns:
+        Padded string.
+    """
     if width > 0 and len(string) < width:
         return string + ' ' * (width - len(string))
     return string
 
 def _ltrunc(string, width, marker='...'):
+    """Truncates a string from the left to be at most 'width' wide.
+
+    Args:
+        string: String to truncate.
+        width:  Width to make the string at most. May be 0 to not truncate.
+        marker: String to use in place of any truncated text.
+
+    Returns:
+        Truncated string.
+    """
     if width > 0 and len(string) > width:
         return marker + string[-(width-len(marker)):]
     return string
 
 def _rtrunc(string, width, marker='...'):
+    """Truncates a string from the right to be at most 'width' wide.
+
+    Args:
+        string: String to truncate.
+        width:  Width to make the string at most. May be 0 to not truncate.
+        marker: String to use in place of any truncated text.
+
+    Returns:
+        Truncated string.
+    """
     if width > 0 and len(string) > width:
         return string[:-(width-len(marker))] + marker
     return string
@@ -26,7 +66,22 @@ def _rtrunc(string, width, marker='...'):
 # Result type
 
 class SearchResult(object):
+    """A single result to a search query.
+
+    Attributes:
+        match:      Match subclass describing the matched part of the result.
+        location:   Location subclass describing the location of the result. May
+            be None if the SearchResult does not have a location.
+    """
     def __init__(self, match, location=None):
+        """Initialises this SearchResult.
+
+        Args:
+            match:      Match subclass describing the matched part of the
+                result.
+            location:   Location subclass describing the location of the result.
+                May be None if the SearchResult does not have a location.
+        """
         if not isinstance(match, Match):
             raise TypeError('Invalid match type')
         if location is not None and not isinstance(location, Location):
@@ -39,13 +94,31 @@ class SearchResult(object):
             return '%s @ %s' % (str(self.match), str(self.location))
         return self.match
 
+    __repr__ = __str__
+
     def format(self, decorate=True, match_col_width=0, loc_col_width=0,
                separator=' '):
+        """Formats this result into a human presentable string.
+
+        Args:
+            decorate:           Boolean, True to apply ANSI decoration to the
+                output string, False to just use pure text.
+            match_col_width:    int maximum width of the match column, or 0 to
+                not limit the match column's width.
+            loc_col_width:      int maximum width of the location column, or 0
+                to not limit the location column's width.
+            separator:          String to use to separate the two columns. The
+                width of this string is not taken into account in the width of
+                either column.
+
+        Returns:
+            String human representation of the SearchResult.
+        """
         match_str = self.match.format(decorate=decorate,
                                       min_width=0,
                                       max_width=match_col_width)
         if self.location:
-            loc_str = self.location.format(decorate=True,
+            loc_str = self.location.format(decorate=decorate,
                                            min_width=loc_col_width,
                                            max_width=loc_col_width)
             return loc_str + separator + match_str
@@ -56,29 +129,71 @@ class SearchResult(object):
 # Match types
 
 class Match(object):
+    """An abstract single match to a search query."""
     def __init__(self):
+        """Initialises the Match."""
         pass
 
-    def format(self, decorate=True, max_width=0):
+    def format(self, decorate=True, min_width=0, max_width=0):
+        """Formats this match into a human presentable string.
+
+        Args:
+            decorate:   Boolean, True to apply ANSI decoration to the output
+                string, False to just use pure text.
+            min_width:  int minimum width to render the string presentation to.
+                May be 0 to not limit the width of the rendered string.
+            max_width:  int maximum width to render the string presentation to.
+                May be 0 to not limit the width of the rendered string.
+
+        Returns:
+            String human representation of the Match.
+        """
         raise NotImplementedError('Match must be subclassed')
 
     def length(self):
+        """Calculates the visible length of the formatted string representing
+        this Match if its width were not limited.
+
+        Returns:
+            int width of the unrestricted Match format string.
+        """
         raise NotImplementedError('Match must be subclassed')
 
 class TextFileMatch(Match):
+    """A match to a search query from a text file.
+
+    Attributes:
+        match:          String full line of the text file which contains the
+            match.
+        regex:          String regex which matched the line.
+        ignore_case:    Boolean, True if case was ignored when matching the
+            regex, False if case was not ignored.
+    """
     # The character sequence to place at the truncation point in result lines
     _RES_CONT = '...'
 
     def __init__(self, match, regex=None, ignore_case=False):
+        """Initialises the Match.
+
+        Args:
+            match:          String full line of the text file which contains the
+                match.
+            regex:          String regex which matched the line.
+            ignore_case:    Boolean, True if case was ignored when matching the
+                regex, False if case was not ignored.
+        """
+        super(TextFileMatch, self).__init__()
         self.match = match
         self.regex = regex
         self.ignore_case = ignore_case
 
     def __str__(self):
         if self.regex:
-            return 'match="%s", regex="%s"%s' % (self.match, self.regex,
-                                                     ' (-i)' if self.ignore_case else '')
+            return 'match="%s", regex="%s"' % (self.match, self.regex) + \
+                   ' (-i)' if self.ignore_case else ''
         return 'match="%s"' % (self.match)
+
+    __repr__ = __str__
 
     def format(self, decorate=True, min_width=0, max_width=0):
         if self.regex:
@@ -127,18 +242,55 @@ class TextFileMatch(Match):
 # Location types
 
 class Location(object):
+    """An abstract location of a single match to a search query."""
     def __init__(self):
+        """Initialises the Location."""
         pass
 
-    def format(self, decorate=True, max_width=0):
+    def format(self, decorate=True, min_width=0, max_width=0):
+        """Formats this location into a human presentable string.
+
+        Args:
+            decorate:   Boolean, True to apply ANSI decoration to the output
+                string, False to just use pure text.
+            min_width:  int minimum width to render the string presentation to.
+                May be 0 to not limit the width of the rendered string.
+            max_width:  int maximum width to render the string presentation to.
+                May be 0 to not limit the width of the rendered string.
+
+        Returns:
+            String human representation of the Location.
+        """
         raise NotImplementedError('Location must be subclassed')
 
     def length(self):
+        """Calculates the visible length of the formatted string representing
+        this Location if its width were not limited.
+
+        Returns:
+            int width of the unrestricted Match format string.
+        """
         raise NotImplementedError('Location must be subclassed')
 
 class TextFileLocation(Location):
+    """The location of a match to a search query in a text file.
+
+    Attributes:
+        path:       String path of the file in which the match occurs.
+        basename:   String name of the file.
+        dirname:    String path to the directory (including trailing separator).
+        line:       int 1-indexed line number of the match in the file.
+    """
 
     def __init__(self, path, line=-1):
+        """Initialises the Location.
+
+        Args:
+            path:   String path of the file in which the match occurs.
+            line:   int line number on which the match occurs. May be -1 if the
+                line number is not known or relevant.
+        """
+        super(TextFileLocation, self).__init__()
         self.path = path
         self.basename = os.path.basename(path)
         self.dirname = os.path.dirname(path) + os.path.sep
@@ -149,8 +301,11 @@ class TextFileLocation(Location):
             return self.path
         return '%s:%d' % (self.path, self.line)
 
+    __repr__ = __str__
+
     def format(self, decorate=True, min_width=0, max_width=0):
         def _format_path(max_width=0):
+            """Internal method to extract and format the path."""
             formatted = _ltrunc(self.path, max_width)
             if decorate:
                 # If there is some of the dirname visible, split the string and
@@ -164,26 +319,8 @@ class TextFileLocation(Location):
                     formatted = ansi.decorate(formatted, ansi.FG_YELLOW, ansi.BOLD)
             return formatted
 
-        def _format_dirname(max_width=0):
-            """Internal method to extract and format/truncate/pad the dirname."""
-            # Truncate as necessary.
-            formatted = _ltrunc(self.dirname, max_width)
-            # Decorating if necessary.
-            if decorate:
-                formatted = ansi.decorate(formatted, ansi.FG_YELLOW)
-            return formatted
-
-        def _format_basename(max_width=0):
-            """Internal method to extract and format/truncate/pad the basename."""
-            # Truncate as necessary.
-            formatted = _ltrunc(self.basename, max_width)
-            # Decorate if necessary.
-            if decorate:
-                formatted = ansi.decorate(formatted, ansi.BOLD, ansi.FG_YELLOW)
-            return formatted
-
         def _format_line():
-            """Internal method to extract and format/truncate/pad the lineno."""
+            """Internal method to extract and format the line number."""
             if self.line < 0:
                 return ''
             formatted = ':' + str(self.line)
@@ -198,12 +335,8 @@ class TextFileLocation(Location):
             curlen = ansi.length(formatted)
             if curlen < max_width:
                 formatted = _format_path(max_width=max_width-curlen) + formatted
-            #     formatted = _format_basename(max_width=max_width-curlen) + formatted
-            # curlen = ansi.length(formatted)
-            # if curlen < max_width:
-            #     formatted = _format_dirname(max_width=max_width-curlen) + formatted
         else:
-            formatted = _format_dirname() + _format_basename() + _format_line()
+            formatted = _format_path() + _format_line()
 
         if min_width > 0:
             # If too short, right pad.

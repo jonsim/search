@@ -26,10 +26,10 @@ def search_result_from_grep(line, regex=None, ignore_case=False):
     """
     path_split = line.split('\0', 1)
     if len(path_split) != 2:
-        raise Exception('Line does not look like grep -HIZns output: ' + line)
+        raise Exception('Incorrectly formatted grep output: ' + line)
     line_split = path_split[1].split(':', 1)
     if len(line_split) != 2:
-        raise Exception('Line does not look like grep -HIZns output: ' + line)
+        raise Exception('Incorrectly formatted grep output: ' + line)
     return SearchResult(TextFileMatch(line_split[1].strip(), regex, ignore_case),
                         TextFileLocation(path_split[0], int(line_split[0])))
 

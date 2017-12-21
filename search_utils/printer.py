@@ -1,3 +1,5 @@
+# (c) Copyright 2017 Jonathan Simmonds
+"""Module providing printers for printing streamed SearchResults."""
 from search_utils import console
 
 class AbstractPrinter(object):
@@ -159,6 +161,7 @@ class MultiLinePrinter(AbstractPrinter):
     lines. The result is never truncated.
     """
     def __init__(self):
+        """Creates a new printer."""
         super(MultiLinePrinter, self).__init__()
         self.decorate = True
 
