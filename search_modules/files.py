@@ -1,4 +1,4 @@
-# (c) Copyright 2017 Jonathan Simmonds
+# Copyright (c) 2017 Jonathan Simmonds
 """Search module for searching file contents.
 
 This will ignore .git and .svn directories.

@@ -1,4 +1,4 @@
-# (c) Copyright 2017 Jonathan Simmonds
+# Copyright (c) 2017 Jonathan Simmonds
 """Module providing very basic console utility functions."""
 import fcntl
 import termios

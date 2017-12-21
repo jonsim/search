@@ -1,7 +1,7 @@
 # search
 A general purpose, extensible search utility, written in Python.
 
-&copy; Copyright 2017 Jonathan Simmonds
+Copyright &copy; 2017 Jonathan Simmonds
 
 ## Dependencies
 * Python 2.6+

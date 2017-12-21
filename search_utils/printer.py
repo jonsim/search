@@ -1,4 +1,4 @@
-# (c) Copyright 2017 Jonathan Simmonds
+# Copyright (c) 2017 Jonathan Simmonds
 """Module providing printers for printing streamed SearchResults."""
 from search_utils import console
 

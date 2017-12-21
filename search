@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# (c) Copyright 2017 Jonathan Simmonds
+# Copyright (c) 2017 Jonathan Simmonds
 """
 Driver for the search utility, loading the various search modules and providing
 a common interface to them.

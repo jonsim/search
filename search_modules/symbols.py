@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-# (c) Copyright 2017 Jonathan Simmonds
+# Copyright (c) 2017 Jonathan Simmonds
 import argparse
 import os.path
 import re
