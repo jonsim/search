@@ -1,4 +1,4 @@
- Table of Contents
+ # Table of Contents
 
 - [search](#search)
   - [Dependencies](#dependencies)
