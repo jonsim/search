@@ -2,7 +2,6 @@
 
 - [search](#search)
   - [Dependencies](#dependencies)
-  - [Installation](#installation)
   - [License](#license)
 - [Documentation](#documentation)
   - [Usage](#usage)
@@ -15,22 +14,29 @@
 # search
 A general purpose, extensible search utility, written in Python.
 
+`search` is capable of searching for regular expressions in: text files; path
+names; or symbol names in object files. It has a flexible module system to allow
+the authoring of additional types of search.
+
 Copyright &copy; 2017 Jonathan Simmonds
 
 
 ## Dependencies
-* Python 2.6+
+`search` requires:
+- Python 2.6+
 
-## Installation
-Ensure the `search` file alongside this README is executable and run it.
-Optionally place `search` on your system PATH.
+Additionally the provided modules require:
+- `files`: `grep` (currently GNU and BSD variants are supported)
+- `symbols`: `objdump` (currently GNU and LLVM variants are supported)
+
 
 ## License
 All files are licensed under the MIT license.
 
+
 # Documentation
 ## Usage
-```search -h
+```$ search -h
 usage: search [-h] [--version] [dirs | files | symbols [-u]] [-i] [-v]
            [path [path ...]] regex
 
@@ -38,7 +44,7 @@ A module-based, recursive file searching utility.
 
 positional arguments:
   path                  Optional path(s) to perform the search in or on. If
-                        ommitted the current working directory is used.
+                        omitted the current working directory is used.
   regex                 Perl-style regular expression to search for. It is
                         recommended to pass this in single quotes to prevent
                         shell expansion or interpretation of the regex
@@ -77,6 +83,7 @@ symbols module:
                         reference but don't define the symbol).
 ```
 
+
 ## Examples
 ```sh
 $ search search_modules 'def search\('
@@ -104,41 +111,47 @@ $ search dirs '.\.md'
 ./README.md
 ```
 
+
 ## Modules
 `search` has been designed from the ground up to be extensible and has a module
 system allowing the contribution of custom search modules to enable new ways to
 search.
 
-By itself the `search` utility does nothing - it is a CLI driver, loading and
-initialising all available modules, parsing the command line and directing the
+By itself the `search` utility does nothing - it is a CLI driver: loading and
+initializing all available modules, parsing the command line and directing the
 search request to the appropriate module.
 
-`search` comes with three pre-written modules.
+
+### Provided modules
+`search` comes with three provided modules:
 - `dirs`: Search recursively on the file names of any files in the given paths,
   similar to the Unix `find` command.
 - `files`: Search recursively on the contents of any files in the given paths,
   similar to the Unix `grep` command. This is the default module which will be
   used if no module is specified.
 - `symbols`: Search recursively in any object files or archives for symbols with
-  names matching regex. This is similar to using `objdump` and `grep` in
-  combination.
+  names matching a regex - similar to an `objdump | grep` pipeline.
 
 
 ### Adding a module
-If you have been provided with an additional module, you may install it by
+If you have been given an additional module, you may install it simply by
 placing it in the `search_modules` directory alongside the `search` executable.
+
 
 ### Writing a module
 The driver will load all modules in the `search_modules` directory alongside the
 `search` executable. With each of these it will bind the following methods:
+
 - `create_subparser(subparsers)`
-  This method will be called by the driver during module initialisation to allow
+
+  This method will be called by the driver during module initialization to allow
   the module to add a subparser to the main parser. This will then automatically
   contribute help text to the driver and allow selecting of the module in a
   query. Additional, module-specific arguments can be added to the subparser if
   necessary. **NB: Any added subparser must use the `add_help=False` keyword
-  argument to prevent automatically adding help options.** Help options are added
-  and handled by the driver.
+  argument to prevent automatically adding help options.** Failure to do so will
+  result in an exception when loading the module - help options are added and
+  handled by the driver.
 
   The arguments are as follows:
   - `subparsers`: Special handle object (`argparse._SubParsersAction`) which can
@@ -146,7 +159,9 @@ The driver will load all modules in the `search_modules` directory alongside the
 
   The return is as follows:
   - Object representing the created subparser.
+
 - `search(regex, paths, args, ignore_case, verbose)`
+
   This method will be called to process a search query.
 
   The arguments are as follows:
@@ -160,12 +175,13 @@ The driver will load all modules in the `search_modules` directory alongside the
 
   The return is as follows:
   - Not expected to return anything. Any output must be printed by the method
-    ifself.
+    itself.
 
 The module loading will fail if these methods cannot be bound.
 
-Putting all this together, if we wanted to add a new `dummy` module, the most
-basic, functional implementation would look like the following:
+Putting all this together, if we wanted to add a new `dummy` module, all we
+would have to do is place a new file `dummy.py` in the `search_modules`
+directory. The most basic, functional contents would look like the following:
 ```py
 def search(regex, paths, args, ignore_case=False, verbose=False):
     """Perform the requested search.
@@ -237,8 +253,8 @@ below and described in much more detail in the Python docstrings:
     for writing search modules which call out to separate tools or command line
     utilities.
 
-Bringing all this together then, a skeleton, functional module might look like
-the following:
+Bringing everything together: a skeleton, functional module might look like the
+following:
 ```py
 from search_utils.printer import MultiLinePrinter, SingleLinePrinter
 from search_utils.process import StreamingProcess
@@ -256,7 +272,7 @@ def parse_result(line, regex=None):
             Defaults to None.
 
     Returns:
-        The initialised SearchResult.
+        The initialized SearchResult.
     """
     path_split = line.split(' ', 1)
     line_split = path_split[1].split(':', 1)
@@ -296,5 +312,10 @@ def create_subparser(subparsers):
     return parser
 ```
 This does roughly what the `files` module does, although simplified and
-considerably less robust. Module authors are encouraged to review the provied
-modules and the docstrings for further inspiration.
+considerably less robust. The brevity of this module illustrates the power of
+the provided utility functions.
+
+Module authors are encouraged to review the provided modules and the docstrings
+for further inspiration. The `dirs` module is by far the simplest (and a
+pure-Python implementation), whereas the `symbols` module is by far the most
+complex (with custom match and location types).

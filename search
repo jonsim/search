@@ -464,7 +464,7 @@ def main():
     base_parser.add_positional_arg(
         'paths',
         metavar='path', type=str, default=['.'], nargs='*',
-        help='Optional path(s) to perform the search in or on. If ommitted the '
+        help='Optional path(s) to perform the search in or on. If omitted the '
              'current working directory is used.')
     base_parser.add_positional_arg(
         'regex',
