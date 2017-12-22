@@ -169,4 +169,7 @@ class MultiLinePrinter(AbstractPrinter):
         for result in result_iterable:
             if not result:
                 continue
-            print result.format(decorate=self.decorate, separator='\n') + '\n'
+            if result.location:
+                print result.format(decorate=self.decorate, separator='\n') + '\n'
+            else:
+                print result.format(decorate=self.decorate)
