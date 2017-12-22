@@ -12,7 +12,7 @@ from search_utils.result import SearchResult, StringMatch, TextFileLocation
 __version__ = '1.0'
 
 def search_result_from_grep(line, regex=None, ignore_case=False):
-    """Creates a SearchResult object from the output from a grep command.
+    """Creates a SearchResult object from the output of a grep command.
 
     NB: This relies on grep being called with at least args 'HIZns'
 

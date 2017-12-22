@@ -1,7 +1,22 @@
+ Table of Contents
+
+- [search](#search)
+  - [Dependencies](#dependencies)
+  - [Installation](#installation)
+  - [License](#license)
+- [Documentation](#documentation)
+  - [Usage](#usage)
+  - [Examples](#examples)
+  - [Modules](#modules)
+    - [Adding a module](#adding-a-module)
+    - [Writing a module](#writing-a-module)
+
+
 # search
 A general purpose, extensible search utility, written in Python.
 
 Copyright &copy; 2017 Jonathan Simmonds
+
 
 ## Dependencies
 * Python 2.6+
@@ -14,7 +29,7 @@ Optionally place `search` on your system PATH.
 All files are licensed under the MIT license.
 
 # Documentation
-### Usage
+## Usage
 ```search -h
 usage: search [-h] [--version] [dirs | files | symbols [-u]] [-i] [-v]
            [path [path ...]] regex
@@ -62,16 +77,16 @@ symbols module:
                         reference but don't define the symbol).
 ```
 
-### Examples
+## Examples
 ```sh
-search search_modules 'def search\('
+$ search search_modules 'def search\('
 search_modules/files.py:65    def search(regex, paths, args, ignore_case=False, verbose=False):
 search_modules/dirs.py:42     def search(regex, paths, args, ignore_case=False, verbose=False):
 search_modules/symbols.py:485 def search(regex, paths, args, ignore_case=False, verbose=False):
 ```
 
 ```sh
-search -i symbols -u test/symbols/*.o DIV
+$ search -i symbols -u test/symbols/*.o DIV
 test/symbols/math_mul.o
 Function symbol:
   Name:    _div
@@ -85,11 +100,11 @@ Undefined symbol:
 ```
 
 ```sh
-search dirs '.\.md'
+$ search dirs '.\.md'
 ./README.md
 ```
 
-### Modules
+## Modules
 `search` has been designed from the ground up to be extensible and has a module
 system allowing the contribution of custom search modules to enable new ways to
 search.
@@ -109,11 +124,11 @@ search request to the appropriate module.
   combination.
 
 
-### Adding modules
+### Adding a module
 If you have been provided with an additional module, you may install it by
 placing it in the `search_modules` directory alongside the `search` executable.
 
-### Writing modules
+### Writing a module
 The driver will load all modules in the `search_modules` directory alongside the
 `search` executable. With each of these it will bind the following methods:
 - `create_subparser(subparsers)`
@@ -121,16 +136,19 @@ The driver will load all modules in the `search_modules` directory alongside the
   the module to add a subparser to the main parser. This will then automatically
   contribute help text to the driver and allow selecting of the module in a
   query. Additional, module-specific arguments can be added to the subparser if
-  necessary. *NB: Any added subparser must use the `add_help=False` keyword
-  argument to prevent automatically adding help options.* Help options are added
+  necessary. **NB: Any added subparser must use the `add_help=False` keyword
+  argument to prevent automatically adding help options.** Help options are added
   and handled by the driver.
+
   The arguments are as follows:
   - `subparsers`: Special handle object (`argparse._SubParsersAction`) which can
     be used to add subparsers to a parser.
+
   The return is as follows:
   - Object representing the created subparser.
 - `search(regex, paths, args, ignore_case, verbose)`
   This method will be called to process a search query.
+
   The arguments are as follows:
   - `regex`: String regular expression to search with.
   - `paths`: List of strings representing the paths to search in/on.
@@ -139,9 +157,11 @@ The driver will load all modules in the `search_modules` directory alongside the
   - `ignore_case`: Boolean, True if the search should be case-insensitive,
     False if it should be case-sensitive.
   - `verbose`: Boolean, True for verbose output, False otherwise.
+
   The return is as follows:
   - Not expected to return anything. Any output must be printed by the method
     ifself.
+
 The module loading will fail if these methods cannot be bound.
 
 Putting all this together, if we wanted to add a new `dummy` module, the most
@@ -180,7 +200,7 @@ def create_subparser(subparsers):
 ```
 
 Any `__version__` member in the module will be picked up as the module's
-version information. All modules should have a 1.x version number, major
+version information. All modules should have a 1.x version number: major
 version numbers greater than this are reserved for future use.
 
 There are a number of helper objects provided for describing search results,
@@ -228,7 +248,7 @@ from search_utils.result import SearchResult, StringMatch, TextFileLocation
 __version__ = '1.0'
 
 def parse_result(line, regex=None):
-    """Creates a SearchResult object from the output from a grep command.
+    """Creates a SearchResult object from the output of a grep command.
 
     Args:
         line:   String single line of grep output to process.
@@ -275,4 +295,6 @@ def create_subparser(subparsers):
         help='Do nothing very much.')
     return parser
 ```
-This does roughly what the `files` module does, but simplified.
+This does roughly what the `files` module does, although simplified and
+considerably less robust. Module authors are encouraged to review the provied
+modules and the docstrings for further inspiration.
