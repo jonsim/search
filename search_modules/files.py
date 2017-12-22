@@ -5,10 +5,10 @@ This will ignore .git and .svn directories.
 """
 import sys
 from search_utils.process import StreamingProcess
-from search_utils.result import SearchResult, TextFileMatch, TextFileLocation
+from search_utils.result import SearchResult, StringMatch, TextFileLocation
 from search_utils.printer import BufferingTwoColumnPrinter
 
-# Module version
+# Module version.
 __version__ = '1.0'
 
 def search_result_from_grep(line, regex=None, ignore_case=False):
@@ -30,22 +30,24 @@ def search_result_from_grep(line, regex=None, ignore_case=False):
     line_split = path_split[1].split(':', 1)
     if len(line_split) != 2:
         raise Exception('Incorrectly formatted grep output: ' + line)
-    return SearchResult(TextFileMatch(line_split[1].strip(), regex, ignore_case),
+    return SearchResult(StringMatch(line_split[1].strip(), regex, ignore_case),
                         TextFileLocation(path_split[0], int(line_split[0])))
 
 def grep(regex, paths, ignore_case, verbose):
-    if sys.platform == 'linux':
+    if sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
         # Assume Linux has GNU grep. This has the options:
         # -r (recursive), -n (print line num), -s (no error messages),
         # -H (print filename), -Z (NUL terminate filenames),
         # -I (ignore binary files), -P (Perl regex)
         grep_args = ['-rnsHZIP']
-    else:
-        # Otherwise assume BSD grep. This has the options:
+    elif sys.platform.startswith('darwin'):
+        # Assume OSX has BSD grep. This has the options:
         # -r (recursive), -n (print line num), -s (no error messages),
         # -H (print filename), --null (NUL terminate filenames),
         # -I (ignore binary files), -E (extended regex)
         grep_args = ['-rnsHIE', '--null']
+    else:
+        raise Exception('Unsupported operating system.')
     if ignore_case:
         # GNU + BSD grep both have: i (ignore case)
         grep_args[0] += 'i'
@@ -60,13 +62,13 @@ def grep(regex, paths, ignore_case, verbose):
         printer.print_results(search_result_from_grep(line, regex, ignore_case)
                               for line in proc)
 
-def search(regex, paths, command_args, ignore_case=False, verbose=False):
+def search(regex, paths, args, ignore_case=False, verbose=False):
     """Perform the requested search.
 
     Args:
         regex:          String regular expression to search with.
         paths:          List of strings representing the paths to search in/on.
-        command_args:   Namespace containing all parsed arguments. If the
+        args:           Namespace containing all parsed arguments. If the
             subparser added additional arguments these will be present.
         ignore_case:    Boolean, True if the search should be case-insensitive,
             False if it should be case-sensitive.

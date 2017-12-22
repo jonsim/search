@@ -1,9 +1,23 @@
 # Copyright (c) 2017 Jonathan Simmonds
 """Search module for searching for symbols within objects and archives."""
-import argparse
 import os.path
 import re
-import subprocess
+import sys
+from search_utils import ansi
+from search_utils.process import StreamingProcess
+from search_utils.result import SearchResult, Match, Location, ltrunc, rpad
+from search_utils.printer import MultiLinePrinter
+
+# Module version.
+__version__ = '1.0'
+
+# List of the known file suffixes to search for object files. May be empty to
+# search all files. Files which are searched which are not of the correct type
+# will be silently ignored, so leaving this empty is most likely to succeed, but
+# may be slower in the presence of lots of non-object files, which will all be
+# parsed to work out if they are actually object files.
+KNOWN_TYPES = []
+# KNOWN_TYPES = ['.o', '.obj', '.a', '.so']
 
 class Symbol(object):
     """An abstract representation of a single Symbol object.
@@ -68,7 +82,13 @@ class Symbol(object):
         self.is_object = False
         self.is_defined = False
 
-    def __str__(self):
+    def format_flags(self):
+        """Retrieves a textual representation of each of the symbol's flags.
+
+        Returns:
+            List of strings representing each of the symbol's flags. May be
+            empty if this symbol has no flags.
+        """
         flags = []
         if self.is_unique:
             flags.append('Unique')
@@ -92,6 +112,10 @@ class Symbol(object):
             flags.append('File')
         if self.is_object:
             flags.append('Object')
+        return flags
+
+    def __str__(self):
+        flags = self.format_flags()
         if flags:
             flag_str = '    Flags:\n      ' + '\n      '.join(flags)
         else:
@@ -163,7 +187,7 @@ class ObjectFile(object):
         self.object_path = object_path
         self.archive_path = archive_path
         if archive_path:
-            self.abs_path = '%s::%s' % (archive_path, object_path)
+            self.abs_path = '%s(%s)' % (archive_path, object_path)
         else:
             self.abs_path = object_path
         self.symbols = []
@@ -176,6 +200,131 @@ class ObjectFile(object):
     __repr__ = __str__
 
 
+class SymbolMatch(Match):
+    """A match to a search query in a symbol.
+
+    Attributes:
+        symbol:         The symbol whose name matched the search query.
+        regex:          String regex which matched the symbol. May be None if
+            unknown.
+        ignore_case:    Boolean, True if case was ignored when matching the
+            regex, False if case was not ignored.
+    """
+    def __init__(self, symbol, regex=None, ignore_case=None):
+        """Initialises the Match.
+
+        Args:
+            symbol:         The symbol whose name matched the search query.
+            regex:          String regex which matched the symbol. May be None
+                if unknown.
+            ignore_case:    Boolean, True if case was ignored when matching the
+                regex, False if case was not ignored.
+        """
+        super(SymbolMatch, self).__init__()
+        self.symbol = symbol
+        self.regex = regex
+        self.ignore_case = ignore_case
+
+    def format(self, decorate=True, min_width=0, max_width=0):
+        flags = self.symbol.format_flags()
+        # Build type string from the flags.
+        if not self.symbol.is_defined:
+            flags.insert(0, 'Undefined')
+        if flags:
+            type_str = '%s symbol:' % (', '.join(flags))
+        else:
+            type_str = 'symbol:'
+        # Fix casing.
+        type_str = type_str.capitalize()
+
+        # Build and decorate the name string.
+        # If decorating and we know the regex, highlight the search term.
+        if decorate and self.regex:
+            re_flags = re.IGNORECASE if self.ignore_case else 0
+            re_split = re.split('(%s)' % (self.regex), self.symbol.name,
+                                flags=re_flags)
+            for i in range(1, len(re_split), 2):
+                re_split[i] = ansi.decorate(re_split[i], ansi.BOLD, ansi.FG_RED)
+            name_str = '  Name:    %s' % (''.join(re_split))
+        else:
+            name_str = '  Name:    %s' % (self.symbol.name)
+
+        # Add symbol description if necessary.
+        lines = [type_str, name_str]
+        if self.symbol.is_defined:
+            lines.append('  Section: %s' % (self.symbol.section))
+            lines.append('  Value:   0x%x' % (self.symbol.value))
+            lines.append('  Size:    0x%x' % (self.symbol.size))
+        return '\n'.join(lines)
+
+    def length(self):
+        raise NotImplementedError('SymbolMatch does not support length limits')
+
+
+class ObjectFileLocation(Location):
+    """The location of a match to a search query in an object file.
+
+    Attributes:
+        object_file:    ObjectFile object representing the parsed object file in
+            which the match was found.
+    """
+    def __init__(self, object_file):
+        """Initialises the Location.
+
+        Args:
+            object_file:    ObjectFile object representing the parsed object
+                file in which the match was found.
+        """
+        super(ObjectFileLocation, self).__init__()
+        self.object_file = object_file
+
+    def __str__(self):
+        return self.object_file.abs_path
+
+    __repr__ = __str__
+
+    def format(self, decorate=True, min_width=0, max_width=0):
+        if self.object_file.archive_path:
+            formatted = ltrunc(self.object_file.abs_path, max_width)
+            # Archive path formatting
+            abs_len = len(self.object_file.abs_path)
+            path_len = len(self.object_file.archive_path)
+            dir_len = len(os.path.dirname(self.object_file.archive_path) + os.path.sep)
+            obj_len = len(self.object_file.object_path)
+            # Split with right-references to take into account that we may have
+            # just truncated the parts we're trying to split out.
+            split = [formatted[:-(abs_len - dir_len)],
+                     formatted[-(abs_len - dir_len):-(abs_len - path_len)],
+                     formatted[-(obj_len + 2):-(obj_len + 1)],
+                     formatted[-(obj_len + 1):-1],
+                     formatted[-1:]]
+            if split[0]:    # Archive dirname
+                split[0] = ansi.decorate(split[0], ansi.FG_YELLOW)
+            if split[1]:    # Archive basename
+                split[1] = ansi.decorate(split[1], ansi.FG_YELLOW)
+            if split[2]:    # (
+                split[2] = ansi.decorate(split[2], ansi.FG_YELLOW)
+            if split[3]:    # Object basename
+                split[3] = ansi.decorate(split[3], ansi.FG_YELLOW, ansi.BOLD)
+            if split[4]:    # )
+                split[4] = ansi.decorate(split[4], ansi.FG_YELLOW)
+            formatted = ''.join(split)
+            return rpad(formatted, min_width)
+        else:
+            formatted = ltrunc(self.object_file.abs_path, max_width)
+            # Object path formatting
+            base_len = len(os.path.basename(self.object_file.abs_path))
+            split = [formatted[:-base_len], formatted[-base_len:]]
+            if split[0]:    # Object dirname
+                split[0] = ansi.decorate(split[0], ansi.FG_YELLOW)
+            if split[1]:    # Object basename
+                split[1] = ansi.decorate(split[1], ansi.FG_YELLOW, ansi.BOLD)
+            formatted = ''.join(split)
+            return rpad(formatted, min_width)
+
+    def length(self):
+        return len(self.object_file.abs_path)
+
 def parse_symbol(line):
     """Parses a Symbol from an objdump symbol table entry.
 
@@ -186,9 +335,14 @@ def parse_symbol(line):
         Symbol subclass parsed from the line, or None if it couldn't be parsed.
     """
     def _parse_elfsymbol(line):
+        # First try the standard ELF symbol table encoding.
         match = re.match(r'^(\S+)\s(.{7})\s(\S+)\s(\S+)\s(.+)$', line)
         if match:
             return ELFSymbol(*match.groups())
+        # Failing that, try the bastardised Mach-O symbol table encoding.
+        match = re.match(r'^(\S+)\s(.{7})\s(\S+)\s(.+)$', line)
+        if match:
+            return ELFSymbol(match.group(1), match.group(2), match.group(3), '0', match.group(4))
         return None
 
     def _parse_othersymbol(line):
@@ -247,9 +401,10 @@ def parse_archive(path, objdump):
     object_files = []
     current_file = None
     for line in objdump:
-        match = re.match(r'^(.+):\s+file format', line)
+        match = re.match(r'^(.+)\((.+)\):\s+file format', line)
         if match:
-            current_file = ObjectFile(match.group(1), path)
+            filename = match.group(2) if match.group(2) else match.group(1)
+            current_file = ObjectFile(filename, path)
             object_files.append(current_file)
             continue
         if not current_file:
@@ -272,86 +427,84 @@ def parse_file(path):
     Returns:
         List of ObjectFile objects parsed from the given file.
     """
-    try:
-        objdump = subprocess.check_output(['objdump', '-t', '-C', path],
-                                          stderr=subprocess.PIPE).split('\n')
-    except subprocess.CalledProcessError:
+    if sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
+        # Assume Linux has GNU objdump. This has the options:
+        # -t (list symbols), -C (de-mangle symbol names)
+        objdump_args = ['objdump', '-t', '-C']
+    elif sys.platform.startswith('darwin'):
+        # Assume OSX has LLVM objdump. This has the options:
+        # -t (list symbols)
+        objdump_args = ['objdump', '-t']
+    objdump_args.append(path)
+    with StreamingProcess(objdump_args) as proc:
+        # Find the first non-blank line.
+        first_line = proc.peek()
+        while not first_line:
+            proc.next()
+            first_line = proc.peek()
+        # Is this an archive?
+        match = re.match(r'^.*[Aa]rchive\s+(.+):$', first_line)
+        if match:
+            return parse_archive(match.group(1), proc)
+        # Some objdumps format archives differently.
+        match = re.match(r'^(.+)\((.+)\):\s+file format', first_line)
+        if match:
+            return parse_archive(match.group(1), proc)
+        # Otherwise maybe it's an object file?
+        match = re.match(r'^(.+):\s+file format', first_line)
+        if match:
+            return [parse_object_file(match.group(1), proc)]
+        # Otherwise it's not an archive or object file.
         return []
-    # Strip and remove empty lines.
-    objdump = [line.strip() for line in objdump]
-    objdump = [line for line in objdump if line]
-    # If no output left, bail.
-    if not objdump:
-        return []
-    # Is this an archive?
-    match = re.match(r'^.*[Aa]rchive\s+(.+):$', objdump[0])
-    if match:
-        return parse_archive(match.group(1), objdump[1:])
-    # Otherwise maybe it's an object file?
-    match = re.match(r'^(.+):\s+file format', objdump[0])
-    if match:
-        return [parse_object_file(match.group(1), objdump)]
-    # Otherwise we've found something unexpected
-    raise Exception('Unexpected objdump output for file ' + path)
 
-def parse_directory(path, parse_all=True):
-    """Parses a directory for ObjectFiles.
+def search_file(path, regex, ignore_case, include_undefined, printer):
+    """Perform the requested search on a file.
 
     Args:
-        path:       String path to the directory.
-        parse_all:  Boolean, True to parse all files in the directory for
-            objects, False to parse only known file types.
-
-    Returns:
-        List of ObjectFile objects parsed from files in the given directory.
+        path:               String path to a file to search.
+        regex:              String regular expression to search with.
+        ignore_case:        Boolean, True if the search should be
+            case-insensitive, False if it should be case-sensitive.
+        include_undefined:  Boolean, True if the search should include symbols
+            which are undefined.
+        printer:            AbstractPrinter subclass to use to print the results
+            to the search.
     """
-    objects = []
-    for dirname, subdirs, files in os.walk(path):
-        for filename in files:
-            if parse_all or any([filename.endswith(suffix) for suffix in
-                                 ['.o', '.obj', '.a', '.so']]):
-                objects += parse_file(os.path.join(dirname, filename))
-    return objects
+    re_flags = re.IGNORECASE if ignore_case else 0
+    object_files = parse_file(path)
+    results = []
+    for object_file in object_files:
+        for symbol in object_file.symbols:
+            if not include_undefined and not symbol.is_defined:
+                continue
+            if re.search(regex, symbol.name, flags=re_flags):
+                results.append(SearchResult(SymbolMatch(symbol, regex, ignore_case),
+                                            ObjectFileLocation(object_file)))
+    printer.print_results(results)
 
-def main():
-    """Main method."""
-    # Handle command line
-    parser = argparse.ArgumentParser(description='TODO')
-    parser.add_argument('term', type=str,
-                        help='The paths to read.')
-    parser.add_argument('paths', type=str, default=None, nargs='+',
-                        help='The paths to read.')
-    args = parser.parse_args()
-
-    objects = []
-    for path in args.paths:
-        if os.path.isdir(path):
-            objects += parse_directory(path)
-        elif os.path.isfile(path):
-            objects += parse_file(path)
-        else:
-            raise Exception('Unrecognised path ' + path)
-    for obj in objects:
-        for sym in obj.symbols:
-            if sym.name == args.term:
-                print '%s:\n%s' % (obj.abs_path, sym)
-    #if objects:
-    #    print '\n\n'.join([str(o) for o in objects])
-
-
-def search(regex, paths, command_args, ignore_case=False, verbose=False):
+def search(regex, paths, args, ignore_case=False, verbose=False):
     """Perform the requested search.
 
     Args:
         regex:          String regular expression to search with.
         paths:          List of strings representing the paths to search in/on.
-        command_args:   Namespace containing all parsed arguments. If the
+        args:           Namespace containing all parsed arguments. If the
             subparser added additional arguments these will be present.
         ignore_case:    Boolean, True if the search should be case-insensitive,
             False if it should be case-sensitive.
         verbose:        Boolean, True for verbose output, False otherwise.
     """
-    print 'symbols search_result'
+    printer = MultiLinePrinter()
+    for path in paths:
+        if os.path.isdir(path):
+            for dirname, subdirs, files in os.walk(path):
+                for filename in files:
+                    if not KNOWN_TYPES or any([filename.endswith(suffix) for
+                                               suffix in KNOWN_TYPES]):
+                        search_file(os.path.join(dirname, filename), regex,
+                                    ignore_case, args.undefined, printer)
+        else:
+            search_file(path, regex, ignore_case, args.undefined, printer)
 
 def create_subparser(subparsers):
     """Creates this module's subparser.
@@ -363,12 +516,14 @@ def create_subparser(subparsers):
     Returns:
         Object representing the created subparser.
     """
-    parser = subparsers.add_parser('symbols', help='symbol mode', add_help=False)
-    parser.add_argument('-d', action='store_const',
-                        const=True, default=False,
-                        help='Consider dynamic symbols')
+    parser = subparsers.add_parser(
+        'symbols',
+        add_help=False,
+        help='Search recursively in any object files or archives for symbols '
+             'with names matching regex.')
+    parser.add_argument(
+        '-u', '--undefined',
+        dest='undefined', action='store_const', const=True, default=False,
+        help='Also print undefined symbols (i.e. in objects which reference '
+             'but don\'t define the symbol).')
     return parser
-
-# Entry point.
-if __name__ == '__main__':
-    main()

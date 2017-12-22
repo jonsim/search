@@ -31,6 +31,7 @@ class StreamingProcess(object):
         self.arglist = arglist
         self.proc = None
         self.returncode = None
+        self._peeked = None
 
     def __str__(self):
         return 'StreamingProcess(%s)' % (str(self.arglist))
@@ -92,11 +93,33 @@ class StreamingProcess(object):
             combined together). The returned line will not have a trailing
             newline.
         """
-        line = self.proc.stdout.readline()
-        # Readline always returns a line suffixed by '\n', unless it reads EOF
-        # in which case it will return ''. We strip off the trailing '\n'.
-        if line:
-            return line[:-1]
+        if self._peeked is not None:
+            peeked = self._peeked
+            self._peeked = None
+            return peeked
         else:
-            self.returncode = self.proc.returncode
-            raise StopIteration
+            line = self.proc.stdout.readline()
+            # Readline always returns a line suffixed by '\n', unless it reads
+            # EOF in which case it will return ''. Strip off the trailing '\n'.
+            if line:
+                return line[:-1]
+            else:
+                self.returncode = self.proc.returncode
+                raise StopIteration
+
+    def peek(self):
+        """Peeks at the next element in this iterator without advancing it.
+
+        Returns:
+            The next line from the process's stdout and stderr stream (they are
+            combined together). This does not advance the iterator, and calling
+            peek or next again will return the same line. The returned line will
+            not have a trailing newline.
+        """
+        if self._peeked is not None:
+            return self._peeked
+        else:
+            # This must echo the implementation in next()
+            line = self.proc.stdout.readline()
+            self._peeked = line[:-1] if line else None
+            return self._peeked

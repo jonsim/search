@@ -451,11 +451,11 @@ def main():
              'and exit.')
     # Add common arguments.
     base_parser.add_common_arg(
-        '-i',
+        '-i', '--ignore-case',
         dest='ignore_case', action='store_const', const=True, default=False,
         help='Enable case-insensitive searching.')
     base_parser.add_common_arg(
-        '-v',
+        '-v', '--verbose',
         dest='verbose', action='store_const', const=True, default=False,
         help='Enable verbose, full replication of the result column, even if '
              'it means taking multiple lines per match (by default the result '

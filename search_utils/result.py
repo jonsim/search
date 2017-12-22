@@ -4,7 +4,7 @@ import os.path
 import re
 from search_utils import ansi
 
-def _lpad(string, width):
+def lpad(string, width):
     """Inserts padding to the left of a string to be at least 'width' wide.
 
     Args:
@@ -18,7 +18,7 @@ def _lpad(string, width):
         return ' ' * (width - len(string)) + string
     return string
 
-def _rpad(string, width):
+def rpad(string, width):
     """Inserts padding to the right of a string to be at least 'width' wide.
 
     Args:
@@ -32,7 +32,7 @@ def _rpad(string, width):
         return string + ' ' * (width - len(string))
     return string
 
-def _ltrunc(string, width, marker='...'):
+def ltrunc(string, width, marker='...'):
     """Truncates a string from the left to be at most 'width' wide.
 
     Args:
@@ -47,7 +47,7 @@ def _ltrunc(string, width, marker='...'):
         return marker + string[-(width-len(marker)):]
     return string
 
-def _rtrunc(string, width, marker='...'):
+def rtrunc(string, width, marker='...'):
     """Truncates a string from the right to be at most 'width' wide.
 
     Args:
@@ -159,13 +159,13 @@ class Match(object):
         """
         raise NotImplementedError('Match must be subclassed')
 
-class TextFileMatch(Match):
-    """A match to a search query from a text file.
+class StringMatch(Match):
+    """A match to a search query in a text string.
 
     Attributes:
-        match:          String full line of the text file which contains the
-            match.
-        regex:          String regex which matched the line.
+        match:          String full line of text which contains the match.
+        regex:          String regex which matched the line. May be None if
+            unknown.
         ignore_case:    Boolean, True if case was ignored when matching the
             regex, False if case was not ignored.
     """
@@ -178,11 +178,12 @@ class TextFileMatch(Match):
         Args:
             match:          String full line of the text file which contains the
                 match.
-            regex:          String regex which matched the line.
+            regex:          String regex which matched the line. May be None if
+                unknown.
             ignore_case:    Boolean, True if case was ignored when matching the
                 regex, False if case was not ignored.
         """
-        super(TextFileMatch, self).__init__()
+        super(StringMatch, self).__init__()
         self.match = match
         self.regex = regex
         self.ignore_case = ignore_case
@@ -230,7 +231,7 @@ class TextFileMatch(Match):
             formatted = ''.join(re_split)
 
         # If too short, left pad.
-        _lpad(formatted, min_width)
+        lpad(formatted, min_width)
 
         # Return whatever we have left.
         return formatted
@@ -306,7 +307,7 @@ class TextFileLocation(Location):
     def format(self, decorate=True, min_width=0, max_width=0):
         def _format_path(max_width=0):
             """Internal method to extract and format the path."""
-            formatted = _ltrunc(self.path, max_width)
+            formatted = ltrunc(self.path, max_width)
             if decorate:
                 # If there is some of the dirname visible, split the string and
                 # format it.
