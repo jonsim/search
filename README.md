@@ -7,6 +7,7 @@
   - [Usage](#usage)
   - [Examples](#examples)
   - [Modules](#modules)
+    - [Provided modules](#provided-modules)
     - [Adding a module](#adding-a-module)
     - [Writing a module](#writing-a-module)
 
