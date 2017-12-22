@@ -4,9 +4,9 @@ import os.path
 import re
 import sys
 from search_utils import ansi
+from search_utils.printer import MultiLinePrinter
 from search_utils.process import StreamingProcess
 from search_utils.result import SearchResult, Match, Location, ltrunc, rpad
-from search_utils.printer import MultiLinePrinter
 
 # Module version.
 __version__ = '1.0'

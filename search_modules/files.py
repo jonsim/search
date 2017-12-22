@@ -4,9 +4,9 @@
 This will ignore .git and .svn directories.
 """
 import sys
+from search_utils.printer import BufferingTwoColumnPrinter
 from search_utils.process import StreamingProcess
 from search_utils.result import SearchResult, StringMatch, TextFileLocation
-from search_utils.printer import BufferingTwoColumnPrinter
 
 # Module version.
 __version__ = '1.0'
