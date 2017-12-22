@@ -37,7 +37,7 @@ All files are licensed under the MIT license.
 
 # Documentation
 ## Usage
-```$ search -h
+```
 usage: search [-h] [--version] [dirs | files | symbols [-u]] [-i] [-v]
            [path [path ...]] regex
 
@@ -197,7 +197,7 @@ def search(regex, paths, args, ignore_case=False, verbose=False):
         verbose:        Boolean, True for verbose output, False otherwise.
     """
     for path in paths:
-      # Do some kind of searching here...
+        pass # Do some kind of searching here...
 
 def create_subparser(subparsers):
     """Creates this module's subparser.
@@ -313,8 +313,8 @@ def create_subparser(subparsers):
     return parser
 ```
 This does roughly what the `files` module does, although simplified and
-considerably less robust. The brevity of this module illustrates the power of
-the provided utility functions.
+considerably less robust. The brevity of this module (most of it is docstrings)
+illustrates the power of the provided utility functions.
 
 Module authors are encouraged to review the provided modules and the docstrings
 for further inspiration. The `dirs` module is by far the simplest (and a
