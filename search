@@ -438,7 +438,7 @@ def main():
     # Build the base parser.
     base_parser = SearchParser(
         add_help=False,
-        description='Simple recursive file searcher.')
+        description='A module-based, recursive file searching utility.')
     # Add global arguments.
     base_parser.add_global_arg(
         '-h', '--help',
