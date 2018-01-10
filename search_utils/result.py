@@ -314,10 +314,10 @@ class TextFileLocation(Location):
                 basename_len = len(self.basename)
                 if len(formatted) > basename_len:
                     dirname_part = ansi.decorate(formatted[:-basename_len], ansi.FG_YELLOW)
-                    basename_part = ansi.decorate(formatted[-basename_len:], ansi.FG_YELLOW, ansi.BOLD)
+                    basename_part = ansi.decorate(formatted[-basename_len:], ansi.BOLD, ansi.FG_YELLOW)
                     formatted = dirname_part + basename_part
                 else:
-                    formatted = ansi.decorate(formatted, ansi.FG_YELLOW, ansi.BOLD)
+                    formatted = ansi.decorate(formatted, ansi.BOLD, ansi.FG_YELLOW)
             return formatted
 
         def _format_line():
