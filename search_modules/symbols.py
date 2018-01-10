@@ -1,4 +1,4 @@
-# Copyright (c) 2017 Jonathan Simmonds
+# Copyright (c) 2017-2018 Jonathan Simmonds
 """Search module for searching for symbols within objects and archives."""
 import os.path
 import re
@@ -16,8 +16,8 @@ __version__ = '1.0'
 # will be silently ignored, so leaving this empty is most likely to succeed, but
 # may be slower in the presence of lots of non-object files, which will all be
 # parsed to work out if they are actually object files.
-KNOWN_TYPES = []
-# KNOWN_TYPES = ['.o', '.obj', '.a', '.so']
+#KNOWN_TYPES = []
+KNOWN_TYPES = ['.o', '.obj', '.a', '.so']
 
 class Symbol(object):
     """An abstract representation of a single Symbol object.
@@ -401,9 +401,11 @@ def parse_archive(path, objdump):
     object_files = []
     current_file = None
     for line in objdump:
-        match = re.match(r'^(.+)\((.+)\):\s+file format', line)
+        if not line:
+            continue
+        match = re.match(r'^(.*[^\)])(\((.+)\))?:\s+file format', line)
         if match:
-            filename = match.group(2) if match.group(2) else match.group(1)
+            filename = match.group(3) if match.group(3) else match.group(1)
             current_file = ObjectFile(filename, path)
             object_files.append(current_file)
             continue
@@ -440,11 +442,16 @@ def parse_file(path):
         # Find the first non-blank line.
         first_line = proc.peek()
         while not first_line:
-            proc.next()
-            first_line = proc.peek()
+            try:
+                proc.next()
+                first_line = proc.peek()
+            except StopIteration:
+                return []
         # Is this an archive?
         match = re.match(r'^.*[Aa]rchive\s+(.+):$', first_line)
         if match:
+            # In this format we have to skip this descriptive line.
+            proc.next()
             return parse_archive(match.group(1), proc)
         # Some objdumps format archives differently.
         match = re.match(r'^(.+)\((.+)\):\s+file format', first_line)
