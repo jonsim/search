@@ -19,7 +19,7 @@ A general purpose, extensible search utility, written in Python.
 names; or symbol names in object files. It has a flexible module system to allow
 the authoring of additional types of search.
 
-Copyright &copy; 2017 Jonathan Simmonds
+Copyright &copy; 2017-2018 Jonathan Simmonds
 
 
 ## Dependencies

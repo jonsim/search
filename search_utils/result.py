@@ -1,4 +1,4 @@
-# Copyright (c) 2017 Jonathan Simmonds
+# Copyright (c) 2017-2018 Jonathan Simmonds
 """Module providing types necessary to build SearchResult objects."""
 import os.path
 import re

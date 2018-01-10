@@ -1,4 +1,4 @@
-# Copyright (c) 2017 Jonathan Simmonds
+# Copyright (c) 2017-2018 Jonathan Simmonds
 """Utilities for adding ANSI formatting to a string for console output."""
 
 RESET =       0 # Resets text
